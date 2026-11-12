@@ -1,0 +1,22 @@
+# Asset Inventory & Criticality Mapping
+# hostname: {role, criticality}
+web-srv-01:
+  role: "web_server"
+  criticality: "high"
+
+db-prod-01:
+  role: "database"
+  criticality: "critical"
+
+dc-primary:
+  role: "domain_controller"
+  criticality: "critical"
+
+jumpbox-01:
+  role: "bastion"
+  criticality: "high"
+
+workstation-dev-01:
+  role: "workstation"
+  criticality: "low"
+

@@ -1,0 +1,22 @@
+# SentinelLog Allowlist & Suppression Rules
+# Entities listed here will either be suppressed or have alert scores reduced.
+version: 1
+
+trusted_ips:
+  # Internal corporate jump boxes or known management endpoints
+  - ip: "10.0.0.5"
+    description: "Internal IT Bastion Jumpbox"
+  - ip: "127.0.0.1"
+    description: "Localhost Loopback"
+
+vulnerability_scanners:
+  # Authorized security scanning engines (e.g., Nessus, Qualys, OpenVAS)
+  - ip: "192.168.1.200"
+    description: "Scheduled Vulnerability Scanner"
+
+service_accounts:
+  # Non-human automated service accounts that run frequent batch jobs
+  - user: "backup_service"
+    description: "Daily automated backup daemon"
+  - user: "monitoring_agent"
+    description: "System health check agent"

@@ -1,0 +1,5 @@
+# SentinelLog Sample Threat Intelligence Blocklist (RFC 5737 Documentation Ranges)
+# Generated for offline testing
+198.51.100.25
+203.0.113.50
+192.0.2.99

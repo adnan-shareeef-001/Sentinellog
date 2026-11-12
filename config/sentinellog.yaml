@@ -1,0 +1,43 @@
+# SentinelLog Main Configuration
+version: 1
+
+engine:
+  max_line_length: 8192       # Treat logs as untrusted: max line length 8192
+  max_file_mb: 500            # Default max file size 500 MB
+  reorder_buffer_size: 1000   # Max events in reorder buffer
+  reorder_buffer_seconds: 60  # Max reorder window seconds
+  default_rule_dir: "rules"
+  database_path: "data/sentinellog.db"
+
+jsonl:
+  field_map:
+    timestamp: "timestamp"
+    event_type: "event_type"
+    host: "host"
+    user: "user"
+    src_ip: "src_ip"
+    dst_ip: "dst_ip"
+    src_port: "src_port"
+    http_method: "http_method"
+    url: "url"
+    status_code: "status_code"
+    user_agent: "user_agent"
+    bytes_out: "bytes_out"
+    event_id: "event_id"
+    process: "process"
+    command_line: "command_line"
+    logon_type: "logon_type"
+
+enrichment:
+  threat_intel:
+    enabled: true
+    feed_dir: "data/threat_intel"
+  geoip:
+    enabled: false
+    database_path: null
+  assets:
+    path: "config/assets.yaml"
+
+reporting:
+  company_name: "SentinelLog Security Operations Center"
+  max_evidence_lines: 50
