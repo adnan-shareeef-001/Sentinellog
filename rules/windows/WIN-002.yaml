@@ -1,0 +1,21 @@
+id: WIN-002
+name: Successful external Remote Desktop logon
+description: Detects interactive Remote Desktop logon (Type 10) originating from an external IP address.
+enabled: true
+severity: high
+type: match
+log_source: windows
+mitre:
+  tactic: Initial Access
+  technique: T1078.002
+detection:
+  filter:
+    event_type: auth_success
+    logon_type: 10
+exceptions:
+  src_ip__cidr: "10.0.0.0/8"
+response:
+  recommended_action: Verify external RDP connection authorization and enforce VPN requirements.
+tests:
+  should_fire: tests/fixtures/win_external_rdp.jsonl
+  should_not_fire: tests/fixtures/win_normal.jsonl

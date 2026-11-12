@@ -1,0 +1,19 @@
+id: WIN-004
+name: User added to local security group
+description: Detects the addition of a user account to a local group (Event ID 4732).
+enabled: true
+severity: high
+type: match
+log_source: windows
+mitre:
+  tactic: Privilege Escalation
+  technique: T1098
+detection:
+  filter:
+    event_type: group_member_added
+exceptions: {}
+response:
+  recommended_action: Validate privileged group membership changes against documented authorization requests.
+tests:
+  should_fire: tests/fixtures/win_group_member.jsonl
+  should_not_fire: tests/fixtures/win_normal.jsonl

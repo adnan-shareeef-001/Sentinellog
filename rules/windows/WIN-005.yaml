@@ -1,0 +1,19 @@
+id: WIN-005
+name: Windows audit log cleared
+description: Detects clearing of the Windows Security event log (Event ID 1102).
+enabled: true
+severity: critical
+type: match
+log_source: windows
+mitre:
+  tactic: Defense Evasion
+  technique: T1070.001
+detection:
+  filter:
+    event_type: log_cleared
+exceptions: {}
+response:
+  recommended_action: Treat as an immediate active compromise indicator; isolate the machine and preserve volatile memory.
+tests:
+  should_fire: tests/fixtures/win_log_cleared.jsonl
+  should_not_fire: tests/fixtures/win_normal.jsonl

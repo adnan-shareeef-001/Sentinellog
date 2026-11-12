@@ -1,0 +1,19 @@
+id: WIN-003
+name: Local or domain user account created
+description: Detects the creation of a new user account (Event ID 4720).
+enabled: true
+severity: medium
+type: match
+log_source: windows
+mitre:
+  tactic: Persistence
+  technique: T1136.001
+detection:
+  filter:
+    event_type: user_created
+exceptions: {}
+response:
+  recommended_action: Verify whether the account creation was requested through standard IT service change requests.
+tests:
+  should_fire: tests/fixtures/win_user_created.jsonl
+  should_not_fire: tests/fixtures/win_normal.jsonl

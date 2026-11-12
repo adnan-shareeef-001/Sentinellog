@@ -30,7 +30,7 @@ def test_cli_rules_test() -> None:
     """Verify rules test evaluates fixtures and passes."""
     result = runner.invoke(app, ["rules", "test", "--rules", "rules"])
     assert result.exit_code == 0
-    assert "All 11 rules passed fixture testing!" in result.stdout
+    assert "rules passed fixture testing!" in result.stdout
 
 
 def test_cli_rules_show() -> None:

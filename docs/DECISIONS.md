@@ -14,3 +14,5 @@
 - D012: In synthetic log simulation, inject attack lines with precise ground-truth line indexing recorded into labels.json for automated benchmarking.
 - D013: Measure scenario recall as the ratio of scenarios where all expected rules triggered, and alert precision as the ratio of alerts referencing labeled malicious lines.
 - D014: Enforce an automated Pytest test coverage threshold of >= 80% starting in Stage S3.
+- D015: Windows Security Event log parser supports both JSON Lines and CSV exports with automated field mapping (Event IDs 4625, 4624, 4688, 4698, 4720, 4732, 1102).
+- D016: State-machine sequence correlation engine tracks ordered multi-stage attack patterns grouped by entity keys (`same: [src_ip]`) within strict time windows.

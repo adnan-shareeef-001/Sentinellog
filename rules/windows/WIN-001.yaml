@@ -1,0 +1,25 @@
+id: WIN-001
+name: Windows multiple logon failures from a single source
+description: Detects 10 or more Windows logon failures (Event ID 4625) from the same IP within 5 minutes.
+enabled: true
+severity: high
+type: threshold
+log_source: windows
+mitre:
+  tactic: Credential Access
+  technique: T1110.001
+detection:
+  filter:
+    event_type: auth_failure
+  group_by:
+    - src_ip
+  threshold: 10
+  window: 5m
+exceptions:
+  src_ip_in:
+    - 10.0.0.5
+response:
+  recommended_action: Block the source IP at the edge firewall and check Active Directory lockout status.
+tests:
+  should_fire: tests/fixtures/win_bruteforce.jsonl
+  should_not_fire: tests/fixtures/win_normal.jsonl

@@ -1,0 +1,20 @@
+id: WIN-006
+name: Suspicious encoded PowerShell or LOLBAS execution
+description: Detects encoded PowerShell command lines or common living-off-the-land binaries.
+enabled: true
+severity: high
+type: match
+log_source: windows
+mitre:
+  tactic: Execution
+  technique: T1059.001
+detection:
+  filter:
+    event_type: process_created
+    command_line__regex: "(?i)(-enc(odedcommand)?\\s|certutil.*-urlcache|bitsadmin.*\\/transfer|mshta\\s+http)"
+exceptions: {}
+response:
+  recommended_action: Decode base64 arguments, inspect parent process hierarchy, and check for network callbacks.
+tests:
+  should_fire: tests/fixtures/win_encoded_ps.jsonl
+  should_not_fire: tests/fixtures/win_normal.jsonl

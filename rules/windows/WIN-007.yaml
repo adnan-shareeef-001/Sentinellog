@@ -1,0 +1,27 @@
+id: WIN-007
+name: Windows brute force followed by successful logon
+description: Detects 5 or more logon failures followed by a successful logon from the same IP within 10 minutes.
+enabled: true
+severity: critical
+type: sequence
+log_source: windows
+mitre:
+  tactic: Initial Access
+  technique: T1078
+detection:
+  steps:
+    - filter:
+        event_type: auth_failure
+      min_count: 5
+    - filter:
+        event_type: auth_success
+      min_count: 1
+  same:
+    - src_ip
+  window: 10m
+exceptions: {}
+response:
+  recommended_action: Isolate target host, terminate user sessions, and force immediate password reset.
+tests:
+  should_fire: tests/fixtures/win_brute_then_success.jsonl
+  should_not_fire: tests/fixtures/win_normal.jsonl

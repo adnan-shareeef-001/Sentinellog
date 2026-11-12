@@ -1,0 +1,27 @@
+id: SSH-003
+name: SSH brute force followed by successful authentication
+description: Detects 8 or more authentication failures followed by a successful login from the same source IP within 10 minutes.
+enabled: true
+severity: critical
+type: sequence
+log_source: ssh_auth
+mitre:
+  tactic: Initial Access
+  technique: T1078
+detection:
+  steps:
+    - filter:
+        event_type: auth_failure
+      min_count: 8
+    - filter:
+        event_type: auth_success
+      min_count: 1
+  same:
+    - src_ip
+  window: 10m
+exceptions: {}
+response:
+  recommended_action: Immediately revoke credentials, terminate active sessions, and check for persistent backdoors.
+tests:
+  should_fire: tests/fixtures/ssh_brute_then_success.log
+  should_not_fire: tests/fixtures/ssh_normal.log
