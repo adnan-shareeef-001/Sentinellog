@@ -129,7 +129,75 @@ def stats(
     paths: list[Path] = typer.Argument(..., help="Log files or directories to inspect."),
 ) -> None:
     """Parse log sources and report statistics, source distribution, and accuracy metrics."""
-    console.print(f"[cyan]Computing log statistics for:[/cyan] {[str(p) for p in paths]}")
+    from sentinellog.ingest.reader import discover_log_files, read_lines
+    from sentinellog.parsers.base import ParseContext
+    from sentinellog.parsers.registry import detect_file_format, get_parser
+
+    # Collect all log files
+    all_files: list[Path] = []
+    for p in paths:
+        all_files.extend(discover_log_files(p))
+
+    if not all_files:
+        console.print("[yellow]No log files found matching target paths.[/yellow]")
+        return
+
+    ctx = ParseContext()
+    file_stats: list[tuple[str, str, int, int]] = []
+
+    for file_path in all_files:
+        fmt = detect_file_format(file_path)
+        try:
+            parser = get_parser(fmt)
+        except KeyError:
+            console.print(f"[red]Warning: No parser available for detected format '{fmt}'[/red]")
+            continue
+
+        file_lines = 0
+        file_events = 0
+        for line_num, line in read_lines(file_path):
+            file_lines += 1
+            ctx.total_lines += 1
+            event = parser.parse(line, str(file_path), line_num, ctx)
+            if event is not None:
+                file_events += 1
+
+        file_stats.append((file_path.name, fmt, file_lines, file_events))
+
+    # Render Summary Table
+    summary_table = Table(title="Ingestion & Parsing Summary", show_lines=True)
+    summary_table.add_column("Metric", style="bold cyan", width=25)
+    summary_table.add_column("Value", style="bold green", justify="right", width=15)
+
+    summary_table.add_row("Total Files Inspected", str(len(all_files)))
+    summary_table.add_row("Total Lines Read", f"{ctx.total_lines:,}")
+    summary_table.add_row("Events Parsed", f"{ctx.parsed_events:,}")
+    summary_table.add_row("Bad / Unparseable Lines", f"{ctx.bad_lines:,}")
+    success_rate = (ctx.parsed_events / ctx.total_lines * 100) if ctx.total_lines > 0 else 0.0
+    summary_table.add_row("Parsing Success Rate", f"{success_rate:.1f}%")
+    console.print(summary_table)
+
+    # Render Per-Source Breakdown Table
+    if ctx.source_counts:
+        src_table = Table(title="Per-Source Event Counts", show_lines=True)
+        src_table.add_column("Source Type", style="bold magenta", width=20)
+        src_table.add_column("Events Parsed", justify="right", width=15)
+        src_table.add_column("Share (%)", justify="right", width=15)
+
+        for src, count in sorted(ctx.source_counts.items(), key=lambda x: x[1], reverse=True):
+            share = (count / ctx.parsed_events * 100) if ctx.parsed_events > 0 else 0.0
+            src_table.add_row(src, f"{count:,}", f"{share:.1f}%")
+        console.print(src_table)
+
+    # Render Per-Event-Type Table
+    if ctx.event_type_counts:
+        evt_table = Table(title="Per-Event-Type Distribution", show_lines=True)
+        evt_table.add_column("Normalized Event Type", style="bold yellow", width=25)
+        evt_table.add_column("Count", justify="right", width=15)
+
+        for et, count in sorted(ctx.event_type_counts.items(), key=lambda x: x[1], reverse=True):
+            evt_table.add_row(et, f"{count:,}")
+        console.print(evt_table)
 
 
 @app.command()

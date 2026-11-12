@@ -51,3 +51,12 @@ def test_cli_alerts_help() -> None:
     assert result.exit_code == 0
     assert "list" in result.stdout
     assert "mark" in result.stdout
+
+
+def test_cli_stats() -> None:
+    """Verify stats command runs and reports parsed counts on sample data."""
+    result = runner.invoke(app, ["stats", "data/samples"])
+    assert result.exit_code == 0
+    assert "Ingestion & Parsing Summary" in result.stdout
+    assert "Total Files Inspected" in result.stdout
+    assert "Events Parsed" in result.stdout
