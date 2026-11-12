@@ -1,0 +1,24 @@
+id: SSH-004
+name: Direct root SSH login attempt
+description: Detects direct SSH login attempts targeting the root account.
+enabled: true
+severity: medium
+type: match
+log_source: ssh_auth
+mitre:
+  tactic: Initial Access
+  technique: T1078.001
+detection:
+  filter:
+    user: root
+    event_type__in:
+      - auth_failure
+      - auth_success
+exceptions:
+  src_ip_in:
+    - 10.0.0.5
+response:
+  recommended_action: Disable PermitRootLogin in sshd_config and enforce key-based sudo access.
+tests:
+  should_fire: tests/fixtures/ssh_root_login.log
+  should_not_fire: tests/fixtures/ssh_normal.log

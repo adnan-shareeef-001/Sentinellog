@@ -1,0 +1,20 @@
+id: SSH-007
+name: Sudo execution of interactive shell or privilege editor
+description: Detects execution of an interactive root shell or visudo via sudo.
+enabled: true
+severity: high
+type: match
+log_source: ssh_auth
+mitre:
+  tactic: Privilege Escalation
+  technique: T1548.003
+detection:
+  filter:
+    event_type: sudo_command
+    command_line__regex: "(/bin/bash|/bin/sh|visudo)"
+exceptions: {}
+response:
+  recommended_action: Review user activity for unauthorized privilege escalation.
+tests:
+  should_fire: tests/fixtures/ssh_sudo_shell.log
+  should_not_fire: tests/fixtures/ssh_normal.log

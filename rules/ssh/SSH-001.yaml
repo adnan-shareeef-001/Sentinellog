@@ -1,0 +1,25 @@
+id: SSH-001
+name: SSH brute force from a single source
+description: Detects 10 or more SSH authentication failures from a single source IP within 5 minutes.
+enabled: true
+severity: high
+type: threshold
+log_source: ssh_auth
+mitre:
+  tactic: Credential Access
+  technique: T1110.001
+detection:
+  filter:
+    event_type: auth_failure
+  group_by:
+    - src_ip
+  threshold: 10
+  window: 5m
+exceptions:
+  src_ip_in:
+    - 10.0.0.5
+response:
+  recommended_action: Block the source IP and check for a later successful login.
+tests:
+  should_fire: tests/fixtures/ssh_bruteforce.log
+  should_not_fire: tests/fixtures/ssh_normal.log

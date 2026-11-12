@@ -1,0 +1,2 @@
+10.0.0.15 - devops [13/Oct/2026:10:00:01 +0000] "GET /index.html HTTP/1.1" 200 4523 "-" "Mozilla/5.0"
+10.0.0.15 - devops [13/Oct/2026:10:00:05 +0000] "GET /about.html HTTP/1.1" 200 1200 "-" "Mozilla/5.0"

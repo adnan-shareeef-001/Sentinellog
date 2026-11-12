@@ -1,12 +1,14 @@
 """SentinelLog Command-Line Interface (CLI)."""
 
 import sys
+import time
 from enum import StrEnum
 from pathlib import Path
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.syntax import Syntax
 from rich.table import Table
 
 from sentinellog import __version__
@@ -31,6 +33,15 @@ app.add_typer(rules_app, name="rules")
 app.add_typer(alerts_app, name="alerts")
 
 console = Console()
+
+SEVERITY_ORDER = {
+    "none": -1,
+    "info": 0,
+    "low": 1,
+    "medium": 2,
+    "high": 3,
+    "critical": 4,
+}
 
 
 class LogFormat(StrEnum):
@@ -93,8 +104,90 @@ def scan(
     max_file_mb: int = typer.Option(500, "--max-file-mb", help="Max file size in megabytes."),
 ) -> None:
     """Scan log files against YAML detection rules and generate security alerts."""
-    console.print(f"[cyan]Scanning paths:[/cyan] {[str(p) for p in paths]}")
-    console.print(f"[dim]Format: {format.value} | Rules: {rules} | Fail-on: {fail_on.value}[/dim]")
+    from sentinellog.engine.engine import DetectionEngine
+    from sentinellog.ingest.reader import discover_log_files, read_lines
+    from sentinellog.output.console import (
+        render_alert_details,
+        render_alerts_table,
+        render_scan_summary,
+    )
+    from sentinellog.output.jsonio import dump_alerts_json
+    from sentinellog.parsers.base import ParseContext
+    from sentinellog.parsers.registry import detect_file_format, get_parser
+    from sentinellog.rules.loader import load_allowlist, load_rules_from_dir
+
+    start_time = time.perf_counter()
+
+    # Load rules and allowlist
+    loaded_rules = load_rules_from_dir(rules)
+    allowlist = load_allowlist()
+
+    if not loaded_rules:
+        console.print(f"[yellow]Warning: No detection rules found in '{rules}'[/yellow]")
+
+    engine = DetectionEngine(rules=loaded_rules, allowlist=allowlist)
+
+    # Discover target files
+    all_files: list[Path] = []
+    for p in paths:
+        all_files.extend(discover_log_files(p))
+
+    if not all_files:
+        console.print("[yellow]No log files found matching specified paths.[/yellow]")
+        return
+
+    ctx = ParseContext()
+    all_alerts = []
+
+    for file_path in all_files:
+        if format == LogFormat.AUTO:
+            fmt_name = detect_file_format(file_path)
+        else:
+            fmt_name = format.value
+
+        try:
+            parser = get_parser(fmt_name)
+        except KeyError:
+            console.print(f"[red]Skipping {file_path.name}: format '{fmt_name}' unsupported[/red]")
+            continue
+
+        for line_num, line in read_lines(file_path, max_file_bytes=max_file_mb * 1024 * 1024):
+            ctx.total_lines += 1
+            event = parser.parse(line, str(file_path), line_num, ctx)
+            if event is not None:
+                new_alerts = engine.process_event(event)
+                all_alerts.extend(new_alerts)
+
+    # Flush remaining buffered events
+    all_alerts.extend(engine.flush())
+    runtime = time.perf_counter() - start_time
+
+    # Render outputs
+    render_alerts_table(all_alerts)
+    if all_alerts:
+        render_alert_details(all_alerts, limit=5)
+    render_scan_summary(
+        events_parsed=ctx.parsed_events,
+        bad_lines=ctx.bad_lines,
+        rules_loaded=len(loaded_rules),
+        alerts=all_alerts,
+        runtime_seconds=runtime,
+    )
+
+    # Output file export
+    if out:
+        if out.suffix.lower() == ".json":
+            dump_alerts_json(all_alerts, out)
+            console.print(f"[green]Exported alerts to {out}[/green]")
+
+    # Check fail-on exit code
+    if fail_on != FailOnSeverity.NONE:
+        threshold_rank = SEVERITY_ORDER[fail_on.value]
+        highest_rank = max(
+            (SEVERITY_ORDER.get(a.severity.value, -1) for a in all_alerts), default=-1
+        )
+        if highest_rank >= threshold_rank:
+            raise typer.Exit(code=2)
 
 
 @app.command()
@@ -133,7 +226,6 @@ def stats(
     from sentinellog.parsers.base import ParseContext
     from sentinellog.parsers.registry import detect_file_format, get_parser
 
-    # Collect all log files
     all_files: list[Path] = []
     for p in paths:
         all_files.extend(discover_log_files(p))
@@ -143,8 +235,6 @@ def stats(
         return
 
     ctx = ParseContext()
-    file_stats: list[tuple[str, str, int, int]] = []
-
     for file_path in all_files:
         fmt = detect_file_format(file_path)
         try:
@@ -153,16 +243,9 @@ def stats(
             console.print(f"[red]Warning: No parser available for detected format '{fmt}'[/red]")
             continue
 
-        file_lines = 0
-        file_events = 0
         for line_num, line in read_lines(file_path):
-            file_lines += 1
             ctx.total_lines += 1
-            event = parser.parse(line, str(file_path), line_num, ctx)
-            if event is not None:
-                file_events += 1
-
-        file_stats.append((file_path.name, fmt, file_lines, file_events))
+            parser.parse(line, str(file_path), line_num, ctx)
 
     # Render Summary Table
     summary_table = Table(title="Ingestion & Parsing Summary", show_lines=True)
@@ -282,7 +365,31 @@ def rules_list(
     rules: Path = typer.Option(Path("rules"), "--rules", "-r", help="Directory containing rules."),
 ) -> None:
     """List all available detection rules and their severity and MITRE mapping."""
-    console.print(f"[cyan]Listing rules from:[/cyan] {rules}")
+    from sentinellog.output.console import SEVERITY_COLORS
+    from sentinellog.rules.loader import load_rules_from_dir
+
+    loaded = load_rules_from_dir(rules)
+    if not loaded:
+        console.print(f"[yellow]No rules found in '{rules}'[/yellow]")
+        return
+
+    table = Table(title=f"Detection Rules Catalog ({len(loaded)} rules)", show_lines=True)
+    table.add_column("Rule ID", style="bold cyan", width=10)
+    table.add_column("Rule Name", width=35)
+    table.add_column("Severity", justify="center", width=12)
+    table.add_column("Type", width=10)
+    table.add_column("Log Source", width=12)
+    table.add_column("MITRE ATT&CK", style="dim", width=25)
+    table.add_column("Status", justify="center", width=8)
+
+    for r in loaded:
+        color = SEVERITY_COLORS.get(r.severity.value, "white")
+        styled_sev = f"[{color}]{r.severity.value.upper()}[/{color}]"
+        status = "[green]ENABLED[/green]" if r.enabled else "[dim]DISABLED[/dim]"
+        mitre_str = f"{r.mitre.technique} ({r.mitre.tactic})"
+        table.add_row(r.id, r.name, styled_sev, r.type, r.log_source, mitre_str, status)
+
+    console.print(table)
 
 
 @rules_app.command("validate")
@@ -290,7 +397,44 @@ def rules_validate(
     rules: Path = typer.Option(Path("rules"), "--rules", "-r", help="Directory containing rules."),
 ) -> None:
     """Validate all YAML detection rules against the Pydantic schema."""
-    console.print(f"[cyan]Validating rules in:[/cyan] {rules}")
+    from sentinellog.rules.loader import load_rules_from_dir
+
+    try:
+        loaded = load_rules_from_dir(rules)
+    except Exception as e:
+        console.print(f"[bold red]Validation Failure:[/bold red] {e}")
+        raise typer.Exit(code=3) from e
+
+    if not loaded:
+        console.print(f"[yellow]Warning: No rules discovered in '{rules}'[/yellow]")
+        raise typer.Exit(code=3)
+
+    console.print(
+        f"[bold green]Success: Validated {len(loaded)} rules without errors.[/bold green]"
+    )
+
+
+def _run_rule_fixture(rule_obj: object, fixture_path: Path) -> int:
+    """Parse a fixture file and return count of alerts emitted for a specific rule."""
+    from sentinellog.engine.engine import DetectionEngine
+    from sentinellog.ingest.reader import read_lines
+    from sentinellog.parsers.registry import detect_file_format, get_parser
+    from sentinellog.rules.schema import Rule
+
+    if not isinstance(rule_obj, Rule):
+        return 0
+    fmt = detect_file_format(fixture_path)
+    parser = get_parser(fmt)
+    engine = DetectionEngine(rules=[rule_obj])
+
+    alerts = []
+    for line_num, line in read_lines(fixture_path):
+        event = parser.parse(line, str(fixture_path), line_num)
+        if event is not None:
+            alerts.extend(engine.process_event(event))
+    alerts.extend(engine.flush())
+
+    return sum(1 for a in alerts if a.rule_id == rule_obj.id)
 
 
 @rules_app.command("test")
@@ -298,7 +442,57 @@ def rules_test(
     rules: Path = typer.Option(Path("rules"), "--rules", "-r", help="Directory containing rules."),
 ) -> None:
     """Run each rule's should_fire and should_not_fire test fixtures."""
-    console.print(f"[cyan]Testing rules fixtures in:[/cyan] {rules}")
+    from sentinellog.rules.loader import load_rules_from_dir
+
+    loaded = load_rules_from_dir(rules)
+    if not loaded:
+        console.print(f"[yellow]No rules found in '{rules}'[/yellow]")
+        raise typer.Exit(code=1)
+
+    table = Table(title="Detection Rule Fixture Test Results", show_lines=True)
+    table.add_column("Rule ID", style="bold cyan", width=10)
+    table.add_column("Rule Name", width=35)
+    table.add_column("Positive Test (should_fire)", justify="center", width=25)
+    table.add_column("Negative Test (should_not_fire)", justify="center", width=25)
+
+    all_passed = True
+
+    for r in loaded:
+        fire_path = Path(r.tests.should_fire)
+        not_fire_path = Path(r.tests.should_not_fire)
+
+        # 1. Positive test
+        if not fire_path.is_file():
+            pos_result = f"[red]MISSING FIXTURE ({fire_path})[/red]"
+            all_passed = False
+        else:
+            fire_count = _run_rule_fixture(r, fire_path)
+            if fire_count >= 1:
+                pos_result = f"[green]PASS ({fire_count} alert)[/green]"
+            else:
+                pos_result = "[red]FAIL (0 alerts triggered)[/red]"
+                all_passed = False
+
+        # 2. Negative test
+        if not not_fire_path.is_file():
+            neg_result = f"[red]MISSING FIXTURE ({not_fire_path})[/red]"
+            all_passed = False
+        else:
+            not_fire_count = _run_rule_fixture(r, not_fire_path)
+            if not_fire_count == 0:
+                neg_result = "[green]PASS (0 alerts)[/green]"
+            else:
+                neg_result = f"[red]FAIL ({not_fire_count} false positive alerts)[/red]"
+                all_passed = False
+
+        table.add_row(r.id, r.name, pos_result, neg_result)
+
+    console.print(table)
+    if not all_passed:
+        console.print("\n[bold red]One or more rule tests failed.[/bold red]\n")
+        raise typer.Exit(code=1)
+
+    console.print(f"\n[bold green]All {len(loaded)} rules passed fixture testing![/bold green]\n")
 
 
 @rules_app.command("show")
@@ -307,7 +501,21 @@ def rules_show(
     rules: Path = typer.Option(Path("rules"), "--rules", "-r", help="Directory containing rules."),
 ) -> None:
     """Show details, logic, and MITRE mapping for a specific detection rule."""
-    console.print(f"[cyan]Showing rule details for:[/cyan] {rule_id}")
+    from sentinellog.rules.loader import load_rules_from_dir
+
+    loaded = load_rules_from_dir(rules)
+    matched = [r for r in loaded if r.id.upper() == rule_id.upper()]
+
+    if not matched:
+        console.print(f"[red]Error: Rule '{rule_id}' not found in '{rules}'[/red]")
+        raise typer.Exit(code=1)
+
+    r = matched[0]
+    import yaml
+
+    yaml_dump = yaml.dump(r.model_dump(), sort_keys=False)
+    syntax = Syntax(yaml_dump, "yaml", theme="monokai", line_numbers=True)
+    console.print(Panel(syntax, title=f"Rule Definition: {r.id} - {r.name}", border_style="cyan"))
 
 
 # Alerts Subcommands

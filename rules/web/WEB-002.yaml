@@ -1,0 +1,19 @@
+id: WEB-002
+name: Path traversal directory climbing in URL
+description: Detects path traversal sequences and encoded dot-dot-slash patterns in requested URLs.
+enabled: true
+severity: high
+type: match
+log_source: web_access
+mitre:
+  tactic: Initial Access
+  technique: T1190
+detection:
+  filter:
+    url__regex: "(\\.\\./|%2e%2e%2f|%2e%2e/|\\.\\.%2f)"
+exceptions: {}
+response:
+  recommended_action: Block request IP and verify web root directory containment settings.
+tests:
+  should_fire: tests/fixtures/web_traversal.log
+  should_not_fire: tests/fixtures/web_normal.log

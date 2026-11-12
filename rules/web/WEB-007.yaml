@@ -1,0 +1,19 @@
+id: WEB-007
+name: Remote command execution probe in URL parameter
+description: Detects command injection symbols and shell commands (e.g. cat, wget, curl, bash, nc) in request URLs.
+enabled: true
+severity: critical
+type: match
+log_source: web_access
+mitre:
+  tactic: Execution
+  technique: T1059.004
+detection:
+  filter:
+    url__regex: "(?i)(;|\\|\\||&&|\\$\\()\\s*(cat|wget|curl|bash|nc)\\b"
+exceptions: {}
+response:
+  recommended_action: Immediately block source IP, inspect server processes for child shells, and sanitize input.
+tests:
+  should_fire: tests/fixtures/web_cmdi.log
+  should_not_fire: tests/fixtures/web_normal.log

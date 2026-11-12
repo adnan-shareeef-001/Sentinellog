@@ -1,0 +1,19 @@
+id: WEB-001
+name: SQL injection attempt in URL parameter
+description: Detects classic SQL injection payloads and union/boolean probes within requested URLs.
+enabled: true
+severity: high
+type: match
+log_source: web_access
+mitre:
+  tactic: Initial Access
+  technique: T1190
+detection:
+  filter:
+    url__regex: "(?i)(union(\\s|\\+)+select|or(\\s|\\+)+1=1|information_schema|sleep\\(\\d+\\)|--\\s|%27|%22)"
+exceptions: {}
+response:
+  recommended_action: Inspect application firewall logs and verify database query parameterization.
+tests:
+  should_fire: tests/fixtures/web_sqli.log
+  should_not_fire: tests/fixtures/web_normal.log

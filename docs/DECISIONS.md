@@ -8,3 +8,6 @@
 - D006: In Web access log parsing, unquote raw URLs safely, normalizing '-' to None for user and user_agent fields.
 - D007: Truncate lines defensively at 8192 characters and sanitize ANSI control codes during streaming ingestion.
 - D008: Auto-detect format by probing the first 20 non-empty lines with a 60% match rate threshold.
+- D009: In DetectionEngine, use a sliding time-window deque with cooldown periods to prevent alert flooding from identical entity keys.
+- D010: Validate all rule regexes against nested quantifier patterns to eliminate ReDoS vulnerabilities at load time.
+- D011: Support rich filter operators (`exact`, `__in`, `__contains`, `__icontains`, `__regex`, `__cidr`, `__gte`, `__lte`, `__exists`) with automatic type coercion.

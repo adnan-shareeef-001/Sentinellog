@@ -1,0 +1,19 @@
+id: WEB-006
+name: Probing for sensitive configuration files or administrative panels
+description: Detects requests accessing sensitive paths such as /.env, /.git, /phpmyadmin, or /admin.
+enabled: true
+severity: high
+type: match
+log_source: web_access
+mitre:
+  tactic: Discovery
+  technique: T1083
+detection:
+  filter:
+    url__regex: "(?i)(/\\.env|/\\.git|/phpmyadmin|/wp-login\\.php|/admin|/etc/passwd)"
+exceptions: {}
+response:
+  recommended_action: Ensure administrative panels are restricted to internal networks and configuration files are unserved.
+tests:
+  should_fire: tests/fixtures/web_sensitive_paths.log
+  should_not_fire: tests/fixtures/web_normal.log

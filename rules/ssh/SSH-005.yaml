@@ -1,0 +1,25 @@
+id: SSH-005
+name: Enumeration of invalid SSH usernames
+description: Detects 5 or more attempts to authenticate using nonexistent user accounts from a single IP within 5 minutes.
+enabled: true
+severity: medium
+type: threshold
+log_source: ssh_auth
+mitre:
+  tactic: Discovery
+  technique: T1087.001
+detection:
+  filter:
+    event_type: invalid_user
+  group_by:
+    - src_ip
+  threshold: 5
+  window: 5m
+exceptions:
+  src_ip_in:
+    - 10.0.0.5
+response:
+  recommended_action: Block source IP and review server exposed ports.
+tests:
+  should_fire: tests/fixtures/ssh_invalid_users.log
+  should_not_fire: tests/fixtures/ssh_normal.log

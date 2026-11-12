@@ -1,0 +1,19 @@
+id: WEB-003
+name: Automated vulnerability scanner user agent
+description: Detects HTTP requests originating from known automated vulnerability scanning tools.
+enabled: true
+severity: medium
+type: match
+log_source: web_access
+mitre:
+  tactic: Reconnaissance
+  technique: T1595.002
+detection:
+  filter:
+    user_agent__regex: "(?i)(sqlmap|nikto|nmap|masscan|dirbuster|gobuster|wpscan|nuclei)"
+exceptions: {}
+response:
+  recommended_action: Block IP at web application firewall and audit targeted endpoints.
+tests:
+  should_fire: tests/fixtures/web_scanner.log
+  should_not_fire: tests/fixtures/web_normal.log

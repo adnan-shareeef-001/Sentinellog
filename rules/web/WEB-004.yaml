@@ -1,0 +1,23 @@
+id: WEB-004
+name: High rate of HTTP 404 Not Found responses
+description: Detects 30 or more HTTP 404 responses from a single source IP within 2 minutes, indicating content probing.
+enabled: true
+severity: medium
+type: threshold
+log_source: web_access
+mitre:
+  tactic: Discovery
+  technique: T1083
+detection:
+  filter:
+    status_code: 404
+  group_by:
+    - src_ip
+  threshold: 30
+  window: 2m
+exceptions: {}
+response:
+  recommended_action: Add temporary rate limit or block probe IP.
+tests:
+  should_fire: tests/fixtures/web_404_burst.log
+  should_not_fire: tests/fixtures/web_normal.log

@@ -1,0 +1,26 @@
+id: SSH-002
+name: SSH password spraying across distinct accounts
+description: Detects SSH authentication failures against 8 or more distinct user accounts from a single IP within 10 minutes.
+enabled: true
+severity: high
+type: threshold
+log_source: ssh_auth
+mitre:
+  tactic: Credential Access
+  technique: T1110.003
+detection:
+  filter:
+    event_type: auth_failure
+  group_by:
+    - src_ip
+  threshold: 8
+  window: 10m
+  distinct: user
+exceptions:
+  src_ip_in:
+    - 10.0.0.5
+response:
+  recommended_action: Isolate source IP and verify compromised account credentials.
+tests:
+  should_fire: tests/fixtures/ssh_spraying.log
+  should_not_fire: tests/fixtures/ssh_normal.log
