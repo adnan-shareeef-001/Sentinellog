@@ -32,8 +32,11 @@ def discover_log_files(target: Path | str) -> list[Path]:
         return [target_path]
 
     discovered: list[Path] = []
+    ignored_names = {"labels.json", "report.json", "package.json", "alerts.json"}
     for item in target_path.rglob("*"):
         if item.is_file() and not item.name.startswith("."):
+            if item.name.lower() in ignored_names:
+                continue
             if item.suffix.lower() in SUPPORTED_EXTENSIONS:
                 discovered.append(item)
 

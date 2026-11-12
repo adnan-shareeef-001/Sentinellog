@@ -11,3 +11,6 @@
 - D009: In DetectionEngine, use a sliding time-window deque with cooldown periods to prevent alert flooding from identical entity keys.
 - D010: Validate all rule regexes against nested quantifier patterns to eliminate ReDoS vulnerabilities at load time.
 - D011: Support rich filter operators (`exact`, `__in`, `__contains`, `__icontains`, `__regex`, `__cidr`, `__gte`, `__lte`, `__exists`) with automatic type coercion.
+- D012: In synthetic log simulation, inject attack lines with precise ground-truth line indexing recorded into labels.json for automated benchmarking.
+- D013: Measure scenario recall as the ratio of scenarios where all expected rules triggered, and alert precision as the ratio of alerts referencing labeled malicious lines.
+- D014: Enforce an automated Pytest test coverage threshold of >= 80% starting in Stage S3.

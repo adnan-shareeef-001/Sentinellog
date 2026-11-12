@@ -212,9 +212,38 @@ def simulate(
     lines: int = typer.Option(20000, "--lines", help="Approximate number of lines to generate."),
 ) -> None:
     """Generate synthetic benign and attack logs with ground-truth labels."""
+    from sentinellog.simulate.generator import simulate_logs
+
     console.print(
-        f"[cyan]Simulating scenario:[/cyan] {scenario.value} -> {out} (seed={seed}, lines={lines})"
+        f"[cyan]Simulating scenario:[/cyan] [bold]{scenario.value}[/bold] -> [green]{out}[/green] "
+        f"[dim](seed={seed}, target_lines={lines})[/dim]"
     )
+
+    records = simulate_logs(
+        scenario=scenario.value,
+        out_dir=out,
+        seed=seed,
+        total_lines=lines,
+    )
+
+    summary_table = Table(title="Simulation Generation Summary", show_lines=True)
+    summary_table.add_column("Scenario Injected", style="bold cyan", width=25)
+    summary_table.add_column("Target File", width=15)
+    summary_table.add_column("Malicious Lines", justify="right", width=15)
+    summary_table.add_column("Expected Rules", style="dim", width=35)
+
+    for rec in records:
+        summary_table.add_row(
+            rec.scenario,
+            rec.file,
+            f"{len(rec.line_numbers):,}",
+            ", ".join(rec.expected_rules),
+        )
+
+    console.print(summary_table)
+    resolved_out = out.resolve()
+    console.print("\n[bold green]Simulation complete.[/bold green] Logs written to:")
+    console.print(f"  [cyan]{resolved_out}[/cyan]\n")
 
 
 @app.command()
@@ -281,6 +310,68 @@ def stats(
         for et, count in sorted(ctx.event_type_counts.items(), key=lambda x: x[1], reverse=True):
             evt_table.add_row(et, f"{count:,}")
         console.print(evt_table)
+
+    # Check for labels.json beside input paths for accuracy evaluation
+    labels_path = None
+    for p in paths:
+        candidate = (
+            p
+            if p.name == "labels.json"
+            else (p / "labels.json" if p.is_dir() else p.parent / "labels.json")
+        )
+        if candidate.is_file():
+            labels_path = candidate
+            break
+
+    if labels_path:
+        from sentinellog.engine.engine import DetectionEngine
+        from sentinellog.metrics import calculate_metrics
+        from sentinellog.rules.loader import load_rules_from_dir
+
+        rules = load_rules_from_dir("rules")
+        engine = DetectionEngine(rules=rules)
+        eval_alerts = []
+
+        for file_path in all_files:
+            fmt = detect_file_format(file_path)
+            try:
+                parser = get_parser(fmt)
+            except KeyError:
+                continue
+
+            for line_num, line in read_lines(file_path):
+                event = parser.parse(line, str(file_path), line_num)
+                if event is not None:
+                    eval_alerts.extend(engine.process_event(event))
+        eval_alerts.extend(engine.flush())
+
+        metrics = calculate_metrics(labels_path, eval_alerts)
+
+        acc_table = Table(title="Detection Accuracy Benchmark (Ground Truth)", show_lines=True)
+        acc_table.add_column("Benchmark Metric", style="bold cyan", width=25)
+        acc_table.add_column("Score", style="bold green", justify="right", width=15)
+        acc_table.add_column("Notes", style="dim")
+
+        rec_pct = metrics["scenario_recall"] * 100
+        prec_pct = metrics["alert_precision"] * 100
+
+        rec_scenarios = int(metrics["recalled_scenarios"])
+        tot_scenarios = int(metrics["total_scenarios"])
+        tp_alerts = int(metrics["tp_alerts"])
+        tot_alerts = int(metrics["total_alerts"])
+
+        acc_table.add_row(
+            "Scenario Recall",
+            f"{rec_pct:.1f}%",
+            f"{rec_scenarios}/{tot_scenarios} scenarios fully detected",
+        )
+        acc_table.add_row(
+            "Alert Precision",
+            f"{prec_pct:.1f}%",
+            f"{tp_alerts}/{tot_alerts} alerts match labeled attack lines",
+        )
+
+        console.print(acc_table)
 
 
 @app.command()

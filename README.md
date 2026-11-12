@@ -1,123 +1,158 @@
-# SentinelLog 🛡️
+# SentinelLog
 
-A lightweight, defensive, Python-based log analysis and threat detection engine that mimics the daily workflow of a Security Operations Center (SOC) analyst.
-
-```
-       _   _             _   _                 
-  ___  ___ _ __ | |_(_)_ __   ___| | | |    ___   __ _ 
- / __|/ _ \ '_ \| __| | '_ \ / _ \ | | |   / _ \ / _` |
- \__ \  __/ | | | |_| | | | |  __/ | | |__| (_) | (_| |
- |___/\___|_| |_|\__|_|_| |_|\___|_| |_____\___/ \__, |
-                                                  |___/ 
-```
-
-[![CI](https://github.com/your-username/sentinellog/actions/workflows/ci.yml/badge.svg)](https://github.com/your-username/sentinellog/actions)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+**SentinelLog** is an offline-first Python log analysis and threat detection CLI platform engineered to mirror real-world Security Operations Center (SOC) analyst workflows. It streams multi-source logs, normalizes them against strict Pydantic v2 schemas, evaluates events through modular detection engines (match, threshold, sequence, anomaly, and threat intelligence), and presents actionable triage alerts in Rich terminal tables, self-contained HTML reports, and interactive dashboards.
 
 ---
 
-## 📖 Overview
+## Key Capabilities
 
-In modern cybersecurity operations, a Security Operations Center (SOC) defends organizations by ingesting millions of telemetry records daily. **SentinelLog** is an educational, production-structured detection engine designed to demonstrate how security analysts parse raw machine logs, detect malicious activity using YAML detection rules, correlate multi-stage attacks, and present actionable findings.
-
-### Key Capabilities
-* **Multi-Source Streaming Ingestion:** Parses Linux SSH (`auth.log`), Web server access logs (Apache/Nginx Combined Log Format), Windows Security event logs (`.evtx`, CSV, JSON), and Syslog (RFC 3164/5424) without loading whole files into RAM.
-* **Declarative YAML Rule Engine:** Supports `match`, `threshold` (sliding time windows), `sequence` (stateful attacker chains), and statistical `anomaly` detection.
-* **Context & Enrichment:** Evaluates local threat intelligence blocklists, asset criticality, and optional GeoIP location.
-* **Alert Deduplication & Scoring:** Employs a composite 0–100 risk scoring algorithm and collapses repeated alerts to mitigate alert fatigue.
-* **Rich Analyst Experience:** High-visibility CLI terminal tables, standalone self-contained HTML incident reports, and an interactive Streamlit dashboard.
-
----
-
-## 🏛️ Architecture
-
-```mermaid
-flowchart LR
-    A["Raw Log Sources\n(SSH, Web, Windows, Syslog)"] --> B["Streaming Ingest\n(PlainText, Gzip, Live Tail)"]
-    B --> C["Parser Registry &\nField Normalization"]
-    C --> D["Normalized Event Stream\n(Pydantic Models, UTC)"]
-    D --> E["Rule Engine\n(Match, Threshold, Sequence, Anomaly)"]
-    E --> F["Enrichment &\nContext Engine"]
-    F --> G["Scoring & Deduplication"]
-    G --> H["SQLite Alert Store\n& Incident Correlator"]
-    H --> I["Outputs\n(Rich CLI, HTML/JSON/CSV, Streamlit)"]
-```
+- **Streaming Multi-Source Ingestion**: Memory-bounded streaming reader handling plain text and gzip archives (`.gz`), with heuristic parser auto-detection.
+- **Normalized Event Schema**: Strict Pydantic v2 models normalizing SSH authentication, Apache/Nginx web access, Windows Event Logs, and Syslog into unified security events.
+- **Tiered Threat Detection Engine**:
+  - **Match**: Single-event atomic signature matching with rich operators (`__in`, `__contains`, `__icontains`, `__regex`, `__cidr`, `__gte`, `__lte`, `__exists`).
+  - **Threshold**: Sliding time-window event counts with distinct-entity tracking (e.g. password spraying across $\ge 8$ distinct users) and cooldown suppression.
+  - **Timestamp Reorder Buffer**: Micro-batch reordering buffer to handle slightly out-of-order log records.
+- **Realistic Attack Simulator**: Generates background benign traffic alongside labeled attack scenarios (`brute_force`, `spraying`, `web_attack`, `windows_compromise`, `mixed`) with ground-truth `labels.json`.
+- **Automated Validation Metrics**: Evaluates **scenario recall** and **alert precision** against labeled benchmark datasets.
+- **Defensive Safeguards**: Built-in 8,192-char line truncation, ANSI escape code stripping, ReDoS prevention (nested quantifier rejection), and safe YAML deserialization.
 
 ---
 
-## 🚀 Quick Start
+## Installation
 
-### 1. Prerequisites
-* Python 3.11 or higher
-* Git
+### Prerequisites
+- Python 3.11 or higher
+- Git
 
-### 2. Installation
-
-#### Windows (PowerShell)
+### Setup
 ```powershell
-# Clone the repository
-git clone https://github.com/your-username/sentinellog.git
-cd sentinellog
+# Clone or navigate to the project directory
+cd "D:\Adnan project\Sentinallog"
 
-# Create and activate virtual environment
+# Create a virtual environment
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
 
-# Install in editable mode with development dependencies
-pip install -e ".[dev]"
-```
-
-#### Ubuntu Linux (Bash)
-```bash
-# Clone the repository
-git clone https://github.com/your-username/sentinellog.git
-cd sentinellog
-
-# Create and activate virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install in editable mode with development dependencies
-pip install -e ".[dev]"
-```
-
-### 3. Verify Installation
-```bash
-sentinellog --help
-sentinellog doctor
+# Install dependencies in development mode
+.venv\Scripts\python.exe -m pip install -e ".[dev]"
 ```
 
 ---
 
-## 🧪 Running Tests & Quality Checks
+## Quick Start Walkthrough
 
-Run the automated test suite and linters locally:
+### 1. Inspect Rule Catalog
+```powershell
+sentinellog rules list
+```
+```text
+                      Detection Rules Catalog (11 rules)                       
+┌──────────┬──────────────────────────────┬──────────┬───────────┬────────────┬───────────────────────────┬─────────┐
+│ Rule ID  │ Rule Name                    │ Severity │ Type      │ Log Source │ MITRE ATT&CK              │ Status  │
+├──────────┼──────────────────────────────┼──────────┼───────────┼────────────┼───────────────────────────┼─────────┤
+│ SSH-001  │ SSH brute force from a       │   HIGH   │ threshold │ ssh_auth   │ T1110.001 (Credential     │ ENABLED │
+│          │ single source                │          │           │            │ Access)                   │         │
+│ SSH-002  │ SSH password spraying across │   HIGH   │ threshold │ ssh_auth   │ T1110.003 (Credential     │ ENABLED │
+│          │ distinct accounts            │          │           │            │ Access)                   │         │
+│ SSH-004  │ Direct root SSH login        │  MEDIUM  │ match     │ ssh_auth   │ T1078.001 (Initial        │ ENABLED │
+│          │ attempt                      │          │           │            │ Access)                   │         │
+│ SSH-005  │ Enumeration of invalid SSH   │  MEDIUM  │ threshold │ ssh_auth   │ T1087.001 (Discovery)     │ ENABLED │
+│          │ usernames                    │          │           │            │                           │         │
+│ SSH-007  │ Sudo execution of            │   HIGH   │ match     │ ssh_auth   │ T1548.003 (Privilege      │ ENABLED │
+│          │ interactive shell or editor  │          │           │            │ Escalation)               │         │
+│ WEB-001  │ SQL injection attempt in URL │   HIGH   │ match     │ web_access │ T1190 (Initial Access)    │ ENABLED │
+│ WEB-002  │ Path traversal directory     │   HIGH   │ match     │ web_access │ T1190 (Initial Access)    │ ENABLED │
+│          │ climbing in URL              │          │           │            │                           │         │
+│ WEB-003  │ Automated vulnerability      │  MEDIUM  │ match     │ web_access │ T1595.002                 │ ENABLED │
+│          │ scanner user agent           │          │           │            │ (Reconnaissance)          │         │
+│ WEB-004  │ High rate of HTTP 404 Not    │  MEDIUM  │ threshold │ web_access │ T1083 (Discovery)         │ ENABLED │
+│          │ Found responses              │          │           │            │                           │         │
+│ WEB-006  │ Probing for sensitive        │   HIGH   │ match     │ web_access │ T1083 (Discovery)         │ ENABLED │
+│          │ configuration files          │          │           │            │                           │         │
+│ WEB-007  │ Remote command execution     │ CRITICAL │ match     │ web_access │ T1059.004 (Execution)     │ ENABLED │
+│          │ probe in URL parameter       │          │           │            │                           │         │
+└──────────┴──────────────────────────────┴──────────┴───────────┴────────────┴───────────────────────────┴─────────┘
+```
 
-```bash
-# Run unit and integration tests with coverage
-pytest
+### 2. Verify Rules against Test Fixtures
+```powershell
+sentinellog rules test
+```
+```text
+All 11 rules passed fixture testing!
+```
 
-# Check code formatting and style
-ruff check .
-black --check .
+### 3. Generate Synthetic Benchmark Logs
+```powershell
+sentinellog simulate --scenario mixed --out data/generated --seed 42
+```
 
-# Static type checking
-mypy src
+### 4. Scan Logs and Generate Triage Output
+```powershell
+sentinellog scan data/generated --rules rules/ --out data/generated/report.json
+```
+```text
+            Scan Execution Summary             
+┌───────────────────────────┬─────────────────┐
+│ Metric                    │           Value │
+├───────────────────────────┼─────────────────┤
+│ Events Parsed             │          10,220 │
+├───────────────────────────┼─────────────────┤
+│ Bad / Corrupt Lines       │               0 │
+├───────────────────────────┼─────────────────┤
+│ Rules Evaluated           │              11 │
+├───────────────────────────┼─────────────────┤
+│ Total Alerts Triggered    │              53 │
+├───────────────────────────┼─────────────────┤
+│   CRITICAL Alerts         │               1 │
+├───────────────────────────┼─────────────────┤
+│   HIGH Alerts             │               7 │
+├───────────────────────────┼─────────────────┤
+│   MEDIUM Alerts           │              45 │
+├───────────────────────────┼─────────────────┤
+│ Execution Runtime         │          1.45 s │
+├───────────────────────────┼─────────────────┤
+│ Throughput                │ 7,039.6 ev/s    │
+└───────────────────────────┴─────────────────┘
+Exported alerts to data\generated\report.json
+```
+
+### 5. Benchmark Detection Precision & Recall
+```powershell
+sentinellog stats data/generated
+```
+```text
+                  Detection Accuracy Benchmark (Ground Truth)                  
+┌───────────────────────────┬─────────────────┬───────────────────────────────┐
+│ Benchmark Metric          │           Score │ Notes                         │
+├───────────────────────────┼─────────────────┼───────────────────────────────┤
+│ Scenario Recall           │          100.0% │ 3/3 scenarios fully detected  │
+├───────────────────────────┼─────────────────┼───────────────────────────────┤
+│ Alert Precision           │          100.0% │ 53/53 alerts match labeled    │
+│                           │                 │ attack lines                  │
+└───────────────────────────┴─────────────────┴───────────────────────────────┘
 ```
 
 ---
 
-## 🗺️ Project Roadmap
-- [x] **Phase 0:** Project foundations, CI pipeline, development environment, and base CLI.
-- [ ] **Phase 1:** Streaming ingestion, normalized event schema, SSH and Web parsers.
-- [ ] **Phase 2:** Declarative YAML rule engine (match & sliding threshold) with starter rule pack.
-- [ ] **Phase 3:** Windows Event log parsing (`.evtx`), Syslog, and stateful sequence rules.
-- [ ] **Phase 4:** Threat intelligence enrichment, asset weighting, deduplication, and SQLite storage.
-- [ ] **Phase 5:** Statistical anomaly detection, live file tailing, and HTML executive reports.
-- [ ] **Phase 6:** Streamlit interactive dashboard, performance profiling, and interview portfolio package.
+## Testing & Quality Assurance
+
+SentinelLog enforces strict code quality gates:
+```powershell
+# Run Ruff linter
+.venv\Scripts\python.exe -m ruff check .
+
+# Run Ruff code formatter verification
+.venv\Scripts\python.exe -m ruff format --check .
+
+# Run Mypy static type checker (strict mode)
+.venv\Scripts\python.exe -m mypy src
+
+# Run test suite with 80% minimum coverage gate
+.venv\Scripts\python.exe -m pytest -q
+```
 
 ---
 
-## 📄 License
-This project is licensed under the terms of the [MIT License](LICENSE).
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](file:///D:/Adnan%20project/Sentinallog/LICENSE) file for details.

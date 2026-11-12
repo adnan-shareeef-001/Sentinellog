@@ -21,3 +21,4 @@ response:
 tests:
   should_fire: tests/fixtures/web_404_burst.log
   should_not_fire: tests/fixtures/web_normal.log
+

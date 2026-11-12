@@ -24,3 +24,4 @@ response:
 tests:
   should_fire: tests/fixtures/ssh_spraying.log
   should_not_fire: tests/fixtures/ssh_normal.log
+

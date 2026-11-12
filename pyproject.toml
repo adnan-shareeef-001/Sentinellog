@@ -51,6 +51,7 @@ select = ["E", "F", "I", "UP", "B", "S"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/sentinellog/cli.py" = ["B008"]
+"src/sentinellog/simulate/*" = ["S311"]
 "tests/*" = ["S101"]
 
 [tool.mypy]
@@ -64,5 +65,5 @@ disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --cov=sentinellog --cov-fail-under=80"
 pythonpath = ["src"]

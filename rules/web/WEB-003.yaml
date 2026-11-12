@@ -17,3 +17,4 @@ response:
 tests:
   should_fire: tests/fixtures/web_scanner.log
   should_not_fire: tests/fixtures/web_normal.log
+

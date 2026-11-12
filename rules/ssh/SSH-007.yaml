@@ -18,3 +18,4 @@ response:
 tests:
   should_fire: tests/fixtures/ssh_sudo_shell.log
   should_not_fire: tests/fixtures/ssh_normal.log
+

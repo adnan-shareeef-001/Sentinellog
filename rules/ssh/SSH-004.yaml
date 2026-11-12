@@ -22,3 +22,4 @@ response:
 tests:
   should_fire: tests/fixtures/ssh_root_login.log
   should_not_fire: tests/fixtures/ssh_normal.log
+

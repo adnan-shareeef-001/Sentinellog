@@ -1,38 +1,62 @@
-# SentinelLog: 5-Minute Portfolio Demonstration Script
+# SentinelLog: 5-Minute Demonstration Walkthrough
 
-This script provides a concise walkthrough demonstrating SentinelLog's core features to technical interviewers or team members.
+This guide provides a rapid demonstration script showcasing SentinelLog's detection capabilities, streaming ingestion, accuracy benchmarking, and defense-in-depth features.
 
 ---
 
-## ⏱️ Step-by-Step Walkthrough
+## 1. System Health & Environment Check (30 seconds)
 
-### Step 1: Health & Environment Verification (30 Seconds)
-```bash
+Verify that all dependencies, configurations, threat intelligence blocklists, and detection rules are healthy:
+```powershell
 sentinellog doctor
 ```
-* **What to explain:** Show how the tool validates its environment, verifies parser readiness, and ensures all detection rules are syntactically valid before operation.
+*Expected Result*: Diagnostic table passes Python version check ($\ge$ 3.11), confirms presence of `config/sentinellog.yaml`, `config/allowlist.yaml`, `config/assets.yaml`, rule directories, and synthetic threat feeds.
 
-### Step 2: Ingest & Telemetry Statistics (1 Minute)
-```bash
-sentinellog stats data/samples/sample_auth.log
-```
-* **What to explain:** Explain the streaming ingestion engine, showing total lines processed, parsing success rate, and breakdown of normalized events.
+---
 
-### Step 3: Threat Detection Scan (1.5 Minutes)
-```bash
-sentinellog scan data/samples/sample_auth.log
-```
-* **What to explain:** Point to the color-coded severity table, MITRE technique tagging, deduplicated event counts, and exact forensic evidence (file + line number).
+## 2. Rule Validation & Regression Testing (45 seconds)
 
-### Step 4: Synthetic Attack Simulation & Metrics (1 Minute)
-```bash
-sentinellog simulate --scenario brute_force --out data/generated/
-sentinellog scan data/generated/simulated.log --ground-truth data/generated/labels.json
-```
-* **What to explain:** Demonstrate the attack simulation framework and show automated calculation of **Precision**, **Recall**, and **F1-Score**.
+Validate that all YAML detection rules adhere to the Pydantic schema and satisfy their positive (`should_fire`) and negative (`should_not_fire`) log fixtures:
+```powershell
+# Validate YAML schema and regex ReDoS safety
+sentinellog rules validate
 
-### Step 5: Incident Report Generation (1 Minute)
-```bash
-sentinellog scan data/generated/simulated.log --out report.html
+# Execute positive and negative test fixture assertions
+sentinellog rules test
 ```
-* **What to explain:** Open `report.html` in a web browser to showcase the executive summary, MITRE tactic heatmap, and incident timelines.
+*Expected Result*: All 11 rules pass schema verification and fixture testing with zero false positives.
+
+---
+
+## 3. Synthetic Traffic & Attack Simulation (45 seconds)
+
+Generate a realistic multi-source dataset containing 95% benign background traffic intermixed with distinct attack scenarios (`brute_force`, `spraying`, `web_attack`):
+```powershell
+sentinellog simulate --scenario mixed --out data/generated --seed 42
+```
+*Expected Result*: Generates `data/generated/auth.log`, `access.log`, and ground-truth `labels.json` detailing malicious line numbers and expected rule IDs.
+
+---
+
+## 4. Threat Detection Scan & Triage Output (60 seconds)
+
+Run the detection engine against the simulated logs, streaming events through the reorder buffer and outputting Rich alerts and machine-readable JSON:
+```powershell
+sentinellog scan data/generated --rules rules/ --out data/generated/report.json
+```
+*Expected Result*:
+- Real-time Rich alert table categorized by severity.
+- Deep detail panels showing MITRE ATT&CK techniques, analyst action steps, and exact raw log evidence references.
+- Execution summary highlighting throughput ($> 7,000$ events/second).
+
+---
+
+## 5. Ground-Truth Accuracy & Statistical Audit (60 seconds)
+
+Audit the engine's precision and recall against ground truth:
+```powershell
+sentinellog stats data/generated
+```
+*Expected Result*:
+- Breakdown of parsed events and bad lines.
+- Benchmark Accuracy Table showing **100% Scenario Recall** and **100% Alert Precision**.
