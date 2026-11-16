@@ -25,3 +25,4 @@ response:
 tests:
   should_fire: tests/fixtures/win_brute_then_success.jsonl
   should_not_fire: tests/fixtures/win_normal.jsonl
+

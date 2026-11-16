@@ -25,3 +25,4 @@ response:
 tests:
   should_fire: tests/fixtures/ssh_brute_then_success.log
   should_not_fire: tests/fixtures/ssh_normal.log
+

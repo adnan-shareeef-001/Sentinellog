@@ -1,0 +1,19 @@
+id: GEN-001
+name: Known threat intelligence blocklisted IP communication
+description: Detects network or authentication events involving IP addresses flagged in threat intelligence blocklists.
+enabled: true
+severity: high
+type: match
+log_source: any
+mitre:
+  tactic: Command and Control
+  technique: T1071
+detection:
+  filter:
+    src_ip__intel: true
+exceptions: {}
+response:
+  recommended_action: Immediately block the indicator on edge firewalls and review historical connections.
+tests:
+  should_fire: tests/fixtures/intel_hit.log
+  should_not_fire: tests/fixtures/intel_normal.log

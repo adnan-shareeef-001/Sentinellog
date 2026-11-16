@@ -23,3 +23,4 @@ response:
 tests:
   should_fire: tests/fixtures/win_bruteforce.jsonl
   should_not_fire: tests/fixtures/win_normal.jsonl
+

@@ -19,3 +19,4 @@ response:
 tests:
   should_fire: tests/fixtures/win_external_rdp.jsonl
   should_not_fire: tests/fixtures/win_normal.jsonl
+

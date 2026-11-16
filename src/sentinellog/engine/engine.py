@@ -58,7 +58,44 @@ class DetectionEngine:
             if alert is not None:
                 alerts.append(alert)
 
-        return alerts
+        if not alerts:
+            return []
+
+        # Enrich alerts with Threat Intel and Asset Criticality
+        from sentinellog.alerts.scoring import calculate_risk_score
+        from sentinellog.enrich.assets import get_asset_inventory
+        from sentinellog.enrich.intel import get_threat_intel_feed
+
+        feed = get_threat_intel_feed()
+        assets = get_asset_inventory()
+
+        enriched_alerts: list[Alert] = []
+        for a in alerts:
+            is_ti = any(
+                feed.is_blocked(ip)
+                for ip in a.entities.get("src_ip", []) + a.entities.get("dst_ip", [])
+            )
+
+            top_crit = "low"
+            for host in a.entities.get("host", []):
+                crit = assets.get_criticality(host)
+                if crit == "critical":
+                    top_crit = "critical"
+                    break
+                if crit == "high" and top_crit != "critical":
+                    top_crit = "high"
+                elif crit == "medium" and top_crit not in ("critical", "high"):
+                    top_crit = "medium"
+
+            new_score = calculate_risk_score(
+                base_severity=a.severity,
+                asset_criticality=top_crit if top_crit != "low" else None,
+                is_threat_intel_match=is_ti,
+                count=a.count,
+            )
+            enriched_alerts.append(a.model_copy(update={"score": max(a.score, new_score)}))
+
+        return enriched_alerts
 
     def process_event(self, event: Event) -> list[Alert]:
         """Ingest an event into the reorder buffer and return any ready alerts."""

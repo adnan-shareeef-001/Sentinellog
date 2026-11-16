@@ -16,3 +16,5 @@
 - D014: Enforce an automated Pytest test coverage threshold of >= 80% starting in Stage S3.
 - D015: Windows Security Event log parser supports both JSON Lines and CSV exports with automated field mapping (Event IDs 4625, 4624, 4688, 4698, 4720, 4732, 1102).
 - D016: State-machine sequence correlation engine tracks ordered multi-stage attack patterns grouped by entity keys (`same: [src_ip]`) within strict time windows.
+- D017: Multi-dimensional alert risk scoring engine computes dynamic 1-100 scores incorporating base rule severity, asset criticality modifier (+15 for critical), threat intelligence feed hits (+20), and recurrence volume.
+- D018: Correlated security incidents cluster multi-vector alerts targeting shared primary entities within a 30-minute sliding window, persisting to SQLite store (`data/sentinellog.db`).

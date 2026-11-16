@@ -4,6 +4,7 @@ This table maps SentinelLog's detection rules to the industry-standard MITRE ATT
 
 | Rule ID | Rule Name | Severity | Type | Log Source | MITRE Tactic | MITRE Technique ID | Technique Name |
 |---|---|---|---|---|---|---|---|
+| `GEN-001` | Known threat intelligence blocklisted IP communication | High | Match | `any` | Command and Control | `T1071` | Application Layer Protocol |
 | `SSH-001` | SSH brute force from a single source | High | Threshold | `ssh_auth` | Credential Access | `T1110.001` | Password Guessing |
 | `SSH-002` | SSH password spraying across distinct accounts | High | Threshold | `ssh_auth` | Credential Access | `T1110.003` | Password Spraying |
 | `SSH-003` | SSH brute force followed by successful authentication | Critical | Sequence | `ssh_auth` | Initial Access | `T1078` | Valid Accounts |

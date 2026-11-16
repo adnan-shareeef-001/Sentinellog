@@ -29,8 +29,14 @@ alerts_app = typer.Typer(
     help="Query and manage persisted security alerts.",
     no_args_is_help=True,
 )
+incidents_app = typer.Typer(
+    name="incidents",
+    help="Query and inspect correlated security incidents.",
+    no_args_is_help=True,
+)
 app.add_typer(rules_app, name="rules")
 app.add_typer(alerts_app, name="alerts")
+app.add_typer(incidents_app, name="incidents")
 
 console = Console()
 
@@ -101,6 +107,7 @@ def scan(
         FailOnSeverity.NONE, "--fail-on", help="Exit code 2 if alerts at or above severity occur."
     ),
     no_store: bool = typer.Option(False, "--no-store", help="Do not store alerts in SQLite."),
+    db: Path = typer.Option(Path("data/sentinellog.db"), "--db", help="Path to SQLite database."),
     max_file_mb: int = typer.Option(500, "--max-file-mb", help="Max file size in megabytes."),
 ) -> None:
     """Scan log files against YAML detection rules and generate security alerts."""
@@ -179,6 +186,22 @@ def scan(
         if out.suffix.lower() == ".json":
             dump_alerts_json(all_alerts, out)
             console.print(f"[green]Exported alerts to {out}[/green]")
+
+    # Persist alerts and correlated incidents to SQLite store
+    if all_alerts and not no_store:
+        from sentinellog.alerts.dedupe import deduplicate_alerts
+        from sentinellog.alerts.incidents import correlate_incidents
+        from sentinellog.alerts.store import AlertStore
+
+        deduped = deduplicate_alerts(all_alerts)
+        incidents = correlate_incidents(deduped)
+
+        store = AlertStore(db)
+        store.save_incidents(incidents)
+        console.print(
+            f"[bold green]Database:[/bold green] Persisted {len(all_alerts)} alerts "
+            f"across {len(incidents)} correlated incidents to [cyan]{db}[/cyan]"
+        )
 
     # Check fail-on exit code
     if fail_on != FailOnSeverity.NONE:
@@ -612,21 +635,160 @@ def rules_show(
 # Alerts Subcommands
 @alerts_app.command("list")
 def alerts_list(
+    severity: str | None = typer.Option(None, "--severity", "-s", help="Filter by severity level."),
+    status: str | None = typer.Option(None, "--status", help="Filter by triage status."),
+    rule: str | None = typer.Option(None, "--rule", "-r", help="Filter by Rule ID."),
     limit: int = typer.Option(50, "--limit", "-n", help="Max number of alerts to return."),
+    db: Path = typer.Option(Path("data/sentinellog.db"), "--db", help="Path to SQLite database."),
 ) -> None:
-    """List recent alerts stored in the database."""
-    console.print(f"[cyan]Listing up to {limit} alerts from database...[/cyan]")
+    """List recent security alerts persisted in the SQLite store."""
+    from sentinellog.alerts.store import AlertStore
+    from sentinellog.output.console import SEVERITY_COLORS
+
+    if not db.is_file():
+        console.print(f"[yellow]Database file '{db}' does not exist yet.[/yellow]")
+        return
+
+    store = AlertStore(db)
+    records = store.get_alerts(severity=severity, status=status, rule_id=rule, limit=limit)
+
+    if not records:
+        console.print("[yellow]No alerts found matching search criteria.[/yellow]")
+        return
+
+    table = Table(title=f"Persisted Security Alerts ({len(records)} shown)", show_lines=True)
+    table.add_column("Alert ID", style="bold cyan", width=16)
+    table.add_column("Rule ID", width=10)
+    table.add_column("Severity", justify="center", width=12)
+    table.add_column("Score", justify="right", width=6)
+    table.add_column("Status", justify="center", width=14)
+    table.add_column("Entities", width=30)
+    table.add_column("First Seen", style="dim", width=20)
+
+    for rec in records:
+        color = SEVERITY_COLORS.get(rec["severity"], "white")
+        styled_sev = f"[{color}]{rec['severity'].upper()}[/{color}]"
+
+        status_str = rec["status"]
+        if status_str == "new":
+            styled_status = "[bold yellow]NEW[/bold yellow]"
+        elif status_str == "acknowledged":
+            styled_status = "[cyan]ACKNOWLEDGED[/cyan]"
+        elif status_str == "resolved":
+            styled_status = "[green]RESOLVED[/green]"
+        elif status_str == "false_positive":
+            styled_status = "[dim]FALSE_POSITIVE[/dim]"
+        else:
+            styled_status = status_str
+
+        ent_summary = ", ".join(
+            f"{k}={v[0]}" for k, v in rec["entities"].items() if isinstance(v, list) and v
+        )
+
+        table.add_row(
+            rec["id"],
+            rec["rule_id"],
+            styled_sev,
+            str(rec["score"]),
+            styled_status,
+            ent_summary[:30],
+            rec["first_seen"][:19],
+        )
+
+    console.print(table)
 
 
 @alerts_app.command("mark")
 def alerts_mark(
-    alert_id: str = typer.Argument(..., help="Alert ID to update."),
-    status: str = typer.Argument(
-        ..., help="New status: new, triaged, false_positive, or resolved."
+    alert_id: str = typer.Argument(..., help="Alert ID to update (e.g. ALT-XXXXXXXX)."),
+    status: str = typer.Option(
+        "acknowledged",
+        "--status",
+        "-s",
+        help="New status: acknowledged, resolved, false_positive.",
     ),
+    db: Path = typer.Option(Path("data/sentinellog.db"), "--db", help="Path to SQLite database."),
 ) -> None:
     """Update the triage status of a specific alert."""
-    console.print(f"[cyan]Updating alert {alert_id} status -> {status}[/cyan]")
+    from sentinellog.alerts.store import AlertStore
+
+    if not db.is_file():
+        console.print(f"[red]Error: Database file '{db}' does not exist.[/red]")
+        raise typer.Exit(code=1)
+
+    store = AlertStore(db)
+    try:
+        updated = store.update_alert_status(alert_id, status)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise typer.Exit(code=1) from e
+
+    if updated:
+        console.print(
+            f"[bold green]Success:[/bold green] Alert [cyan]{alert_id}[/cyan] "
+            f"marked as [bold]{status}[/bold]."
+        )
+    else:
+        console.print(f"[red]Error: Alert '{alert_id}' not found in database.[/red]")
+        raise typer.Exit(code=1)
+
+
+# Incidents Subcommands
+@incidents_app.command("list")
+def incidents_list(
+    status: str | None = typer.Option(None, "--status", help="Filter by incident status."),
+    limit: int = typer.Option(50, "--limit", "-n", help="Max number of incidents to return."),
+    db: Path = typer.Option(Path("data/sentinellog.db"), "--db", help="Path to SQLite database."),
+) -> None:
+    """List correlated security incidents stored in the SQLite database."""
+    from sentinellog.alerts.store import AlertStore
+    from sentinellog.output.console import SEVERITY_COLORS
+
+    if not db.is_file():
+        console.print(f"[yellow]Database file '{db}' does not exist yet.[/yellow]")
+        return
+
+    store = AlertStore(db)
+    incidents = store.get_incidents(status=status, limit=limit)
+
+    if not incidents:
+        console.print("[yellow]No security incidents found matching criteria.[/yellow]")
+        return
+
+    table = Table(title=f"Correlated Security Incidents ({len(incidents)} shown)", show_lines=True)
+    table.add_column("Incident ID", style="bold cyan", width=18)
+    table.add_column("Title", width=35)
+    table.add_column("Severity", justify="center", width=12)
+    table.add_column("Score", justify="right", width=6)
+    table.add_column("Status", justify="center", width=12)
+    table.add_column("Alerts", justify="right", width=8)
+    table.add_column("First Seen", style="dim", width=20)
+
+    for inc in incidents:
+        color = SEVERITY_COLORS.get(inc["severity"], "white")
+        styled_sev = f"[{color}]{inc['severity'].upper()}[/{color}]"
+
+        st = inc["status"]
+        if st == "open":
+            styled_status = "[bold red]OPEN[/bold red]"
+        elif st == "investigating":
+            styled_status = "[yellow]INVESTIGATING[/yellow]"
+        elif st == "resolved":
+            styled_status = "[green]RESOLVED[/green]"
+        else:
+            styled_status = st
+
+        table.add_row(
+            inc["id"],
+            inc["title"][:35],
+            styled_sev,
+            str(inc["score"]),
+            styled_status,
+            str(inc["alert_count"]),
+            inc["first_seen"][:19],
+        )
+
+    console.print(table)
 
 
 if __name__ == "__main__":

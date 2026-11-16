@@ -17,3 +17,4 @@ response:
 tests:
   should_fire: tests/fixtures/win_group_member.jsonl
   should_not_fire: tests/fixtures/win_normal.jsonl
+

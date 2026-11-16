@@ -83,6 +83,13 @@ def evaluate_filter_operator(field_val: Any, operator: str, target_val: Any) -> 
         except (ValueError, TypeError):
             return False
 
+    if operator == "intel":
+        from sentinellog.enrich.intel import get_threat_intel_feed
+
+        feed = get_threat_intel_feed()
+        is_blocked = feed.is_blocked(str(field_val))
+        return is_blocked is bool(target_val)
+
     return False
 
 
