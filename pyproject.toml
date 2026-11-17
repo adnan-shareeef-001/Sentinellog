@@ -51,6 +51,7 @@ select = ["E", "F", "I", "UP", "B", "S"]
 
 [tool.ruff.lint.per-file-ignores]
 "src/sentinellog/cli.py" = ["B008"]
+"src/sentinellog/output/html_report.py" = ["E501"]
 "src/sentinellog/simulate/*" = ["S311"]
 "tests/*" = ["S101"]
 

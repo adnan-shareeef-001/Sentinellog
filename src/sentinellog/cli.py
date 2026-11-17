@@ -4,6 +4,7 @@ import sys
 import time
 from enum import StrEnum
 from pathlib import Path
+from typing import Any
 
 import typer
 from rich.console import Console
@@ -218,9 +219,68 @@ def tail(
     file: Path = typer.Argument(..., help="Log file path to continuously monitor."),
     format: LogFormat = typer.Option(LogFormat.AUTO, "--format", "-f", help="Log format."),
     rules: Path = typer.Option(Path("rules"), "--rules", "-r", help="Path to rules dir."),
+    from_start: bool = typer.Option(
+        False, "--from-start", help="Read existing lines from start of file."
+    ),
+    db: Path | None = typer.Option(
+        None, "--db", help="Persist detected alerts to SQLite database."
+    ),
 ) -> None:
     """Continuously tail a log file in real time and evaluate detection rules."""
-    console.print(f"[cyan]Tailing log stream:[/cyan] {file} [dim]format: {format.value}[/dim]")
+    from sentinellog.alerts.store import AlertStore
+    from sentinellog.engine.engine import DetectionEngine
+    from sentinellog.ingest.tail import tail_file
+    from sentinellog.output.console import SEVERITY_COLORS
+    from sentinellog.parsers.registry import detect_file_format, get_parser
+    from sentinellog.rules.loader import load_rules_from_dir
+
+    if not file.is_file():
+        console.print(f"[red]Error: Target log file '{file}' does not exist.[/red]")
+        raise typer.Exit(code=1)
+
+    loaded_rules = load_rules_from_dir(rules)
+    engine = DetectionEngine(rules=loaded_rules)
+
+    if format == LogFormat.AUTO:
+        fmt_name = detect_file_format(file)
+    else:
+        fmt_name = format.value
+
+    try:
+        parser = get_parser(fmt_name)
+    except KeyError as err:
+        console.print(f"[red]Error: Format '{fmt_name}' is unsupported.[/red]")
+        raise typer.Exit(code=1) from err
+
+    store = AlertStore(db) if db else None
+
+    console.print(
+        f"[bold cyan]SentinelLog Live Tail[/bold cyan] -> [green]{file}[/green] "
+        f"[dim](format: {fmt_name}, rules: {len(loaded_rules)})[/dim]"
+    )
+    console.print("[dim]Press Ctrl+C to terminate live stream...[/dim]\n")
+
+    alert_count = 0
+    try:
+        for line_num, line in tail_file(file, from_start=from_start):
+            event = parser.parse(line, str(file), line_num)
+            if event is None:
+                continue
+
+            alerts = engine.process_event(event)
+            for a in alerts:
+                alert_count += 1
+                color = SEVERITY_COLORS.get(a.severity.value, "white")
+                time_str = a.first_seen.strftime("%H:%M:%S")
+                console.print(
+                    f"[{color}][ALERT {a.severity.value.upper()}][/{color}] "
+                    f"[bold]{a.rule_id}[/bold] - {a.rule_name} "
+                    f"[dim]({time_str})[/dim] entities: {a.entities}"
+                )
+                if store:
+                    store.save_alert(a)
+    except KeyboardInterrupt:
+        console.print(f"\n[yellow]Tail session ended. Alerts emitted: {alert_count}[/yellow]")
 
 
 @app.command()
@@ -402,16 +462,50 @@ def report(
     from_db: bool = typer.Option(
         True, "--from-db", help="Generate report from SQLite alert store."
     ),
+    db: Path = typer.Option(Path("data/sentinellog.db"), "--db", help="Path to SQLite database."),
     last: str = typer.Option("24h", "--last", help="Time window (e.g., 1h, 24h, 7d)."),
     out: Path = typer.Option(Path("report.html"), "--out", "-o", help="Output HTML file path."),
+    company: str = typer.Option(
+        "SentinelLog SOC Operations", "--company", "-c", help="Company name for report header."
+    ),
 ) -> None:
     """Generate a self-contained HTML executive summary report."""
-    console.print(f"[cyan]Generating report:[/cyan] {out} [dim](window: {last})[/dim]")
+    from sentinellog.alerts.store import AlertStore
+    from sentinellog.output.html_report import generate_html_report
+
+    console.print(
+        f"[cyan]Generating executive security report:[/cyan] {out} [dim](window: {last})[/dim]"
+    )
+
+    alerts: list[dict[str, Any]] = []
+    incidents: list[dict[str, Any]] = []
+
+    if from_db and db.is_file():
+        store = AlertStore(db)
+        alerts = store.get_alerts(limit=500)
+        incidents = store.get_incidents(limit=100)
+
+    out_file = generate_html_report(
+        alerts=alerts,
+        incidents=incidents,
+        output_path=out,
+        company_name=company,
+        window=last,
+    )
+    resolved_path = out_file.resolve()
+    console.print("[bold green]Success:[/bold green] HTML Executive Report generated at:")
+    console.print(f"  [cyan]{resolved_path}[/cyan]\n")
 
 
 @app.command()
 def doctor() -> None:
     """Run health checks on runtime environment, dependencies, configuration, and rules."""
+    import shutil
+
+    from sentinellog.alerts.store import AlertStore
+    from sentinellog.enrich.intel import get_threat_intel_feed
+    from sentinellog.rules.loader import load_rules_from_dir
+
     console.print(
         Panel.fit(
             "[bold cyan]SentinelLog Diagnostic Doctor[/bold cyan]\n"
@@ -452,22 +546,48 @@ def doctor() -> None:
 
     rules_dir = Path("rules")
     if rules_dir.is_dir():
-        cats = [d.name for d in rules_dir.iterdir() if d.is_dir()]
+        loaded = load_rules_from_dir(rules_dir)
         table.add_row(
-            "Rule Categories",
+            "Rules Catalog",
             "[green]PASS[/green]",
-            f"Categories: {', '.join(cats) if cats else 'none'}",
+            f"{len(loaded)} active YAML rules loaded successfully",
         )
     else:
-        table.add_row("Rule Categories", "[yellow]MISSING[/yellow]", "rules/ folder not found")
+        table.add_row("Rules Catalog", "[yellow]MISSING[/yellow]", "rules/ folder not found")
 
     intel_file = Path("data/threat_intel/blocklist_ips.txt")
     if intel_file.is_file():
-        table.add_row("Threat Intel Feed", "[green]PASS[/green]", str(intel_file.resolve()))
+        feed = get_threat_intel_feed("data/threat_intel")
+        table.add_row(
+            "Threat Intel Feed",
+            "[green]PASS[/green]",
+            f"{len(feed.exact_ips)} IPs and {len(feed.networks)} CIDR networks loaded",
+        )
     else:
         table.add_row(
             "Threat Intel Feed", "[yellow]MISSING[/yellow]", "blocklist_ips.txt not found"
         )
+
+    # Database connectivity test
+    db_path = Path("data/sentinellog.db")
+    try:
+        store = AlertStore(db_path)
+        with store._get_connection() as conn:
+            conn.execute("SELECT 1")
+        table.add_row("SQLite Store", "[green]PASS[/green]", f"Read/write verified: {db_path}")
+    except Exception as e:
+        table.add_row("SQLite Store", "[red]FAIL[/red]", str(e))
+
+    # Disk Space Check
+    try:
+        total, used, free = shutil.disk_usage(".")
+        free_gb = free / (1024**3)
+        if free_gb >= 1.0:
+            table.add_row("Disk Space", "[green]PASS[/green]", f"{free_gb:.1f} GB available")
+        else:
+            table.add_row("Disk Space", "[yellow]WARN[/yellow]", f"Low space: {free_gb:.2f} GB")
+    except Exception:  # noqa: S110
+        pass
 
     console.print(table)
     console.print("\n[bold green]Environment check completed successfully.[/bold green]\n")

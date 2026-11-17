@@ -1,0 +1,31 @@
+id: SSH-006
+name: Successful SSH login outside business hours
+description: Detects successful SSH logins occurring at night or during weekends outside standard business hours.
+enabled: true
+severity: medium
+type: anomaly
+log_source: ssh_auth
+mitre:
+  tactic: Initial Access
+  technique: T1078
+detection:
+  kind: offhours
+  filter:
+    event_type: auth_success
+  hours:
+    start: "08:00"
+    end: "18:00"
+    days:
+      - mon
+      - tue
+      - wed
+      - thu
+      - fri
+exceptions:
+  user__in:
+    - auto_deploy
+response:
+  recommended_action: Confirm with the account owner whether the late-night or weekend session was authorized.
+tests:
+  should_fire: tests/fixtures/ssh_offhours.log
+  should_not_fire: tests/fixtures/ssh_business_hours.log

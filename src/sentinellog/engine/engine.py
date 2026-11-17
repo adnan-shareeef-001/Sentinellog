@@ -3,6 +3,7 @@
 from collections.abc import Iterator
 from typing import Any
 
+from sentinellog.engine.anomaly import AnomalyEngine
 from sentinellog.engine.match import MatchEngine, matches_allowlist
 from sentinellog.engine.sequence import SequenceEngine
 from sentinellog.engine.threshold import ThresholdEngine
@@ -32,6 +33,7 @@ class DetectionEngine:
         self.match_engine = MatchEngine()
         self.threshold_engine = ThresholdEngine()
         self.sequence_engine = SequenceEngine()
+        self.anomaly_engine = AnomalyEngine()
 
         # Reorder buffer
         self._buffer: list[Event] = []
@@ -54,6 +56,8 @@ class DetectionEngine:
                 alert = self.threshold_engine.evaluate(rule, event)
             elif rule.type == "sequence":
                 alert = self.sequence_engine.evaluate(rule, event)
+            elif rule.type == "anomaly":
+                alert = self.anomaly_engine.evaluate(rule, event)
 
             if alert is not None:
                 alerts.append(alert)

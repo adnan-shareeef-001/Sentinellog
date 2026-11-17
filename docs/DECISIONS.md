@@ -18,3 +18,5 @@
 - D016: State-machine sequence correlation engine tracks ordered multi-stage attack patterns grouped by entity keys (`same: [src_ip]`) within strict time windows.
 - D017: Multi-dimensional alert risk scoring engine computes dynamic 1-100 scores incorporating base rule severity, asset criticality modifier (+15 for critical), threat intelligence feed hits (+20), and recurrence volume.
 - D018: Correlated security incidents cluster multi-vector alerts targeting shared primary entities within a 30-minute sliding window, persisting to SQLite store (`data/sentinellog.db`).
+- D019: Anomaly detection engine combines schedule-based off-hours detection (SSH-006) with moving-window statistical rate spike evaluation (WEB-005).
+- D020: Executive security reporting generates fully self-contained HTML documents with embedded CSS and zero external CDN or JavaScript dependencies.

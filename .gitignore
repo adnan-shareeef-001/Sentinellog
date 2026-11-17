@@ -30,8 +30,14 @@ htmlcov/
 # Environment and Data
 .env
 data/generated/
-data/sentinellog.db
-data/sentinellog.db-journal
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/*.db*
+*.html
+report.html
+data/*.html
 
 # IDE & OS
 .vscode/

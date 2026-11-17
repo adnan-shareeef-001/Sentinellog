@@ -1,0 +1,23 @@
+id: WEB-005
+name: Abnormal spike in HTTP 5xx server error responses
+description: Detects sudden surge in HTTP 500/502/503/504 internal server error status codes.
+enabled: true
+severity: high
+type: anomaly
+log_source: web_access
+mitre:
+  tactic: Impact
+  technique: T1499
+detection:
+  kind: rate_spike
+  filter:
+    status_code__gte: 500
+  threshold: 5
+  window: 5m
+  z: 2.0
+exceptions: {}
+response:
+  recommended_action: Inspect web application backend logs and database error pools for crash-looping services or denial of service attempts.
+tests:
+  should_fire: tests/fixtures/web_5xx_spike.log
+  should_not_fire: tests/fixtures/web_5xx_normal.log
