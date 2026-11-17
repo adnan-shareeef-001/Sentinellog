@@ -458,6 +458,39 @@ def stats(
 
 
 @app.command()
+def dashboard(
+    port: int = typer.Option(8501, "--port", "-p", help="Port for the Streamlit dashboard."),
+    db: Path = typer.Option(Path("data/sentinellog.db"), "--db", help="Path to SQLite database."),
+) -> None:
+    """Launch the interactive Streamlit SOC analyst operations dashboard."""
+    import subprocess
+
+    app_path = Path(__file__).parent / "dashboard" / "app.py"
+    console.print(
+        "[bold cyan]Launching SentinelLog SOC Dashboard[/bold cyan] "
+        f"on port [green]{port}[/green]..."
+    )
+    console.print(f"Target Database: [dim]{db}[/dim]")
+    cmd = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        str(app_path),
+        "--server.port",
+        str(port),
+        "--server.headless",
+        "true",
+    ]
+    try:
+        subprocess.run(cmd, check=True)  # noqa: S603
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Dashboard stopped by user.[/yellow]")
+    except Exception as e:
+        console.print(f"[red]Failed to launch Streamlit dashboard:[/red] {e}")
+
+
+@app.command()
 def report(
     from_db: bool = typer.Option(
         True, "--from-db", help="Generate report from SQLite alert store."

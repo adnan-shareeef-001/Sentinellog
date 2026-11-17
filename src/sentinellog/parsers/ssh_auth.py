@@ -3,6 +3,7 @@
 import os
 import re
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 
 from sentinellog.models import Event, ensure_utc
@@ -36,6 +37,35 @@ INVALID_USER_RE = re.compile(r"Invalid user (?P<user>\S*) from (?P<ip>\S+)(?: po
 SUDO_RE = re.compile(r"(?P<user>\S+) : .*COMMAND=(?P<cmd>.*)$")
 
 
+@lru_cache(maxsize=256)
+def _get_file_year(file_path: str) -> int:
+    """Cache file modification year to avoid repeated stat system calls."""
+    try:
+        p = Path(file_path)
+        if p.is_file():
+            mtime = os.path.getmtime(p)
+            return datetime.fromtimestamp(mtime, tz=UTC).year
+    except OSError:
+        pass
+    return datetime.now(UTC).year
+
+
+MONTH_MAP = {
+    "Jan": 1,
+    "Feb": 2,
+    "Mar": 3,
+    "Apr": 4,
+    "May": 5,
+    "Jun": 6,
+    "Jul": 7,
+    "Aug": 8,
+    "Sep": 9,
+    "Oct": 10,
+    "Nov": 11,
+    "Dec": 12,
+}
+
+
 def _parse_timestamp(ts_str: str, file_path: str) -> datetime:
     """Parse classic or ISO timestamp, resolving year from file mtime if missing."""
     # Try ISO first
@@ -48,14 +78,23 @@ def _parse_timestamp(ts_str: str, file_path: str) -> datetime:
             pass
 
     # Classic syslog format (e.g., 'Oct 13 14:22:01' or 'Oct  3 04:12:00')
-    # Infer year from file mtime if available
-    inferred_year = datetime.now(UTC).year
-    p = Path(file_path)
-    if p.is_file():
+    inferred_year = _get_file_year(file_path)
+
+    # Fast path for classic syslog timestamp
+    parts = ts_str.split()
+    if len(parts) == 3 and parts[0] in MONTH_MAP:
         try:
-            mtime = os.path.getmtime(p)
-            inferred_year = datetime.fromtimestamp(mtime, tz=UTC).year
-        except OSError:
+            m = MONTH_MAP[parts[0]]
+            d = int(parts[1])
+            time_parts = parts[2].split(":")
+            if len(time_parts) == 3:
+                h, minute, s = int(time_parts[0]), int(time_parts[1]), int(time_parts[2])
+                dt_utc = datetime(inferred_year, m, d, h, minute, s, tzinfo=UTC)
+                now_utc = datetime.now(UTC)
+                if dt_utc > now_utc:
+                    dt_utc = dt_utc.replace(year=inferred_year - 1)
+                return dt_utc
+        except (ValueError, OverflowError):
             pass
 
     # Normalize multiple spaces in date (e.g. 'Oct  3')

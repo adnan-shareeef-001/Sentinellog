@@ -64,7 +64,22 @@ module = "tests.*"
 strict = false
 disallow_untyped_defs = false
 
+[[tool.mypy.overrides]]
+module = [
+    "pandas.*",
+    "streamlit.*",
+]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+omit = [
+    "src/sentinellog/dashboard/app.py",
+]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q --cov=sentinellog --cov-fail-under=80"
+markers = [
+    "slow: marks tests as slow performance benchmarks",
+]
+addopts = "-q -m 'not slow' --cov=sentinellog --cov-fail-under=80"
 pythonpath = ["src"]

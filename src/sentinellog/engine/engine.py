@@ -35,6 +35,11 @@ class DetectionEngine:
         self.sequence_engine = SequenceEngine()
         self.anomaly_engine = AnomalyEngine()
 
+        # Index rules by log source for high-speed dispatch
+        self._rules_by_source: dict[str, list[Rule]] = {}
+        for r in self.rules:
+            self._rules_by_source.setdefault(r.log_source, []).append(r)
+
         # Reorder buffer
         self._buffer: list[Event] = []
 
@@ -44,11 +49,10 @@ class DetectionEngine:
             return []
 
         alerts: list[Alert] = []
-        for rule in self.rules:
-            # Check source compatibility
-            if rule.log_source != "any" and rule.log_source != event.source_type:
-                continue
-
+        candidates = self._rules_by_source.get("any", []) + self._rules_by_source.get(
+            event.source_type, []
+        )
+        for rule in candidates:
             alert: Alert | None = None
             if rule.type == "match":
                 alert = self.match_engine.evaluate(rule, event)
